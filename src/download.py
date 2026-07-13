@@ -2,8 +2,6 @@
 Script para baixar os dados de DFP (Demonstrações Financeiras Padronizadas)
 diretamente do Portal de Dados Abertos da CVM.
 
-Rodar o script dessa forma:
-    python src/download.py
 
 Fonte: https://dados.cvm.gov.br/dataset/cia_aberta-doc-dfp
 """
