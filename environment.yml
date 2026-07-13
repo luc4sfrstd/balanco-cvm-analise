@@ -1,0 +1,12 @@
+name: balanco-cvm
+channels:
+  - defaults
+dependencies:
+  - python=3.11
+  - pandas
+  - matplotlib
+  - requests
+  - jupyter
+  - seaborn
+  - numpy
+prefix: /home/lucas/miniconda3/envs/balanco-cvm
