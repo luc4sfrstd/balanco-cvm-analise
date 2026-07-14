@@ -86,6 +86,29 @@ def pivotar_balanco(df: pd.DataFrame) -> pd.DataFrame:
 
     return df_pivotado
 
+
+def extrair_patrimonio_liquido(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Extrai o Patrimônio Líquido de cada empresa/ano pelo NOME da conta
+    (DS_CONTA), não pelo código (CD_CONTA).
+ 
+    Motivo: o código do PL varia entre empresas -- bancos grandes (Itaú,
+    Bradesco, Santander, BB, BTG...) usam uma estrutura de 8 grupos de
+    passivo, onde o PL fica no código "2.08". Empresas menores/não
+    bancárias usam uma estrutura de 3 grupos, onde o PL fica no "2.03".
+    O NOME da conta, porém, é consistente em ambos os casos:
+    "Patrimônio Líquido Consolidado".
+    """
+    filtro_pl = df["DS_CONTA"].str.strip().str.lower() == "patrimônio líquido consolidado"
+ 
+    pl_bruto = df[filtro_pl][["CNPJ_CIA", "DT_FIM_EXERC", "VL_CONTA"]]
+ 
+    # Remove possíveis duplicatas (mesma empresa/ano reportado mais de
+    # uma vez, ex: como comparativo em relatórios diferentes)
+    pl_limpo = pl_bruto.drop_duplicates(subset=["CNPJ_CIA", "DT_FIM_EXERC"])
+ 
+    return pl_limpo.rename(columns={"VL_CONTA": "patrimonio_liquido"})
+
 def main() -> None:
     """
     Função principal que realiza a limpeza e consolidação dos dados.
@@ -113,15 +136,26 @@ def main() -> None:
 
     dicionario_contas = criar_dicionario_contas(balanco_consolidado)
     caminho_dicionario = PASTA_PROCESSED / 'dicionario_contas.json'
+    
     with open(caminho_dicionario, 'w', encoding='utf-8') as arquivo:
         json.dump(dicionario_contas, arquivo, ensure_ascii=False, indent=2)
     print(f'Dicionário de contas salvo em {caminho_dicionario}')
+
+
+    print("Extraindo Patrimônio Líquido pelo nome da conta...")
+    tabela_pl = extrair_patrimonio_liquido(balanco_consolidado)
+    print(f"  -> Patrimônio Líquido encontrado para {len(tabela_pl)} registros empresa/ano")
 
 
     print(f'\nTotal de linhas antes do pivot: {len(balanco_consolidado)}')
     print(f'Total de colunas antes do pivot: {len(balanco_consolidado.columns)}')
     print(f'Pivotando os dados para o formato largo (uma linha por empresa/ano)...')
     balanco_consolidado = pivotar_balanco(balanco_consolidado)
+
+    balanco_consolidado = balanco_consolidado.merge(
+        tabela_pl, on=["CNPJ_CIA", "DT_FIM_EXERC"], how="left"
+    )
+
 
     destino = PASTA_PROCESSED / 'balanco_bancos_2021_2025.csv'
 
