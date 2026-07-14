@@ -1,12 +1,14 @@
 """
 Script de limpeza: filtra os dados de balanço patrimonial (BPA e BPP)
 da CVM, mantendo apenas empresas dos setores Bancos e Intermediação
-Financeira, e consolida os anos de 2021 a 2025 num único arquivo.
+Financeira, consolida os anos de 2021 a 2025, e transforma o resultado
+para o formato largo (uma linha por empresa/ano).
 """
 
 import zipfile
 import pandas as pd
 from pathlib import Path
+import json
 
 RAIZ_PROJETO = Path(__file__).resolve().parent.parent
 
@@ -56,6 +58,34 @@ def ler_balanco_do_zip(ano: int, tipo: str, cnpjs_filtrados: list) -> pd.DataFra
     return df_filtrado
 
 
+def criar_dicionario_contas(df: pd.DataFrame) -> dict:
+    """
+    Cria um dicionário mapeando CD_CONTA -> DS_CONTA (código -> nome legível),
+    pra sabermos o significado de cada coluna depois do pivot.
+
+    Ex: {"1.01": "Ativo Circulante", "2.01": "Passivo Circulante", ...}
+    """
+
+    pares_unicos = df[['CD_CONTA', 'DS_CONTA']].drop_duplicates()
+    return dict(zip(pares_unicos['CD_CONTA'], pares_unicos['DS_CONTA']))
+
+
+def pivotar_balanco(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Transforma os dados do formato longo (uma linha por conta contábil)
+    para o formato largo (uma linha por empresa/ano, contas viram colunas).
+    """
+
+    df_pivotado = df.pivot_table(
+        index = ['CNPJ_CIA', 'DENOM_CIA', 'DT_FIM_EXERC'],
+        columns = 'CD_CONTA',
+        values = 'VL_CONTA'
+    )
+
+    df_pivotado.reset_index(inplace=True)
+
+    return df_pivotado
+
 def main() -> None:
     """
     Função principal que realiza a limpeza e consolidação dos dados.
@@ -80,6 +110,18 @@ def main() -> None:
 
 
     balanco_consolidado = pd.concat(todos_os_dfs, ignore_index=True)
+
+    dicionario_contas = criar_dicionario_contas(balanco_consolidado)
+    caminho_dicionario = PASTA_PROCESSED / 'dicionario_contas.json'
+    with open(caminho_dicionario, 'w', encoding='utf-8') as arquivo:
+        json.dump(dicionario_contas, arquivo, ensure_ascii=False, indent=2)
+    print(f'Dicionário de contas salvo em {caminho_dicionario}')
+
+
+    print(f'\nTotal de linhas antes do pivot: {len(balanco_consolidado)}')
+    print(f'Total de colunas antes do pivot: {len(balanco_consolidado.columns)}')
+    print(f'Pivotando os dados para o formato largo (uma linha por empresa/ano)...')
+    balanco_consolidado = pivotar_balanco(balanco_consolidado)
 
     destino = PASTA_PROCESSED / 'balanco_bancos_2021_2025.csv'
 
